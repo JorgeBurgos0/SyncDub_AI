@@ -1,6 +1,6 @@
 # 🎙️ Traductor IA (AI Video Dubbing)
 
-Una aplicación que automatiza el proceso de traducción y doblaje de videos. Utiliza un backend asíncrono en FastAPI y un panel web para transcribir, traducir, clonar voces y ensamblar el video final conservando la música de fondo original.
+Una aplicación que automatiza el proceso de traducción y doblaje de videos. Utiliza un backend asíncrono en FastAPI y un panel web para transcribir, traducir, generar voces y ensamblar el video final conservando la música de fondo original.
 
 ## Características
 
@@ -9,8 +9,8 @@ Una aplicación que automatiza el proceso de traducción y doblaje de videos. Ut
 - **Diarización de Hablantes**: Identifica y separa a los diferentes locutores con `pyannote.audio`.
 - **Separación de Audio**: Aísla las voces de la música de fondo o SFX usando `demucs`.
 - **Traducción Neuronal**: Traducción de textos utilizando el modelo `demonbyron/HY-MT1.5-7B` a través de Ollama.
-- **Síntesis de Voz (TTS)**: Clonación y generación de voces en múltiples idiomas con `kokoro`.
-- **Editor Interactivo**: Interfaz web para editar traducciones, cambiar voces, regenerar audios por segmento y visualizar una línea de tiempo.
+- **Síntesis de Voz (TTS)**: Generación de voces en múltiples idiomas con `kokoro`.
+- **Editor Interactivo**: Interfaz web para editar traducciones, cambiar voces y regenerar audios por segmento.
 - **Ensamblaje de Video**: Mezcla de audio y sincronización híbrida (audio/video) usando FFmpeg.
 
 ## Tecnologías
