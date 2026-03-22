@@ -173,10 +173,17 @@ class VideoTranslatorPipeline:
 
         from pyannote.audio import Pipeline
 
-        pipeline = Pipeline.from_pretrained(
-            "pyannote/speaker-diarization-3.1",
-            token="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"
-        )
+        import os
+        hf_token = os.environ.get("HF_TOKEN", None)
+        try:
+            # Intentar cargar desde caché local (modelos ya descargados)
+            pipeline = Pipeline.from_pretrained(
+                "pyannote/speaker-diarization-3.1",
+                token=hf_token
+            )
+        except Exception as e:
+            print(f"[PYANNOTE] Error cargando modelo: {e}")
+            raise
 
         pipeline.to(torch.device("cpu"))
 
@@ -233,22 +240,35 @@ class VideoTranslatorPipeline:
     # -------------------------------------------------
 
     def translate_text(self, text):
-
         url = "http://localhost:11434/api/generate"
 
-        prompt = (
-            f"Translate the following segment into Spanish. "
-            f"IMPORTANT: Do not translate proper names, locations, or brands; keep them as they are in the original or their romanized form. "
-            f"Make the translation concise. "
-            f"Text: {text}"
-        )
+        lang_names_en = {"es": "Spanish", "en": "English", "fr": "French", "ja": "Japanese", "zh": "Chinese"}
+        lang_names_zh = {"es": "西班牙语", "en": "英语", "fr": "法语", "ja": "日语", "zh": "中文"}
+        
+        tgt_en = lang_names_en.get(self.target_language, "Spanish")
+        tgt_zh = lang_names_zh.get(self.target_language, "西班牙语")
+        
+        # Check if Chinese is involved
+        is_zh = getattr(self, "source_language", None) == "zh" or self.target_language == "zh"
+        
+        if is_zh:
+            prompt = (
+                f"将以下文本翻译为{tgt_zh}，只输出译文，不要解释：\n{text}"
+            )
+        else:
+            prompt = (
+                f"Translate to {tgt_en}. Output only the translation, nothing else:\n{text}"
+            )
 
         payload = {
             "model": "demonbyron/HY-MT1.5-7B",
             "prompt": prompt,
             "stream": False,
             "options": {
-                "temperature": 0.1
+                "top_k": 20,
+                "top_p": 0.6,
+                "repeat_penalty": 1.05,
+                "temperature": 0.7
             }
         }
 
@@ -259,33 +279,40 @@ class VideoTranslatorPipeline:
 
     # -------------------------------------------------
 
-    def _clean_translation(self, text):
-        """Elimina preámbulos, notas y basura que el modelo pueda añadir."""
+    def _clean_translation(self, raw, original_prompt=None):
+        """Elimina preámbulos, reglas, notas y cualquier basura que el modelo añada."""
 
-        # Eliminar posibles repeticiones del prompt
-        prompt_leak_patterns = [
-            r"(?i)(?:es\s+|son\s+)?importante[s]?[\s:]*no\s+.*?concisa\.",
-            r"(?i)importante:\s*no\s*traduzca.*?concisa\.",
+        text = raw.strip()
+
+        # Patrones de frases introductoras comunes del modelo
+        intro_patterns = [
+            r"(?i)^(claro[,.]?|por supuesto[,.]?|aquí tienes[:]?|here(?:'s| is)[:]?|sure[,.]?|of course[,.]?|la traducción[:]?|traducción[:]?)\s*\n+",
+            r"(?i)^(claro[,.]?|por supuesto[,.]?|aquí tienes[:]?|here(?:'s| is)[:]?|sure[,.]?|of course[,.]?|la traducción[:]?|traducción[:]?)\s+",
         ]
 
-        # Eliminar líneas que parezcan explicaciones del modelo
-        noise_patterns = [
-            r"(?i)^(claro[,.]?|aquí tienes[:]?|la traducción[:]?|traducción[:]?|"
-            r"here('s| is)[:]?|sure[,.]?|of course[,.]?)[^\n]*\n*",
-            r"(?i)\n*\(.*?(nota|note|traducción|translation).*?\)",
-            r"(?i)\n*\*.*?\*",                # *texto en asteriscos*
-            r"(?i)\n*(note|nota)[:\s].*$",    # líneas que empiezan con Nota:
+        # Patrones de reglas / instrucciones regurgitadas
+        rule_patterns = [
+            r"(?i)(translate\s+to\s+\w+\.?\s*output\s+only.*?:\s*\n*)",
+            r"(?i)(output\s+only\s+the\s+translation.*?:\s*\n*)",
+            r"(?i)(将以下.*?不要.*?：\s*\n*)",
+            r"(?i)(critical\s+rules?:.*?)(\n|$)",
+            r"(?i)^\d+\.\s+DO\s+NOT.*$",
+            r"(?i)^\d+\.\s+Keep.*$",
+            r"(?i)(注意只需要输出翻译后的结果.*?(\n|$))",
+        ]
+
+        # Notas y aclaraciones al final
+        suffix_patterns = [
+            r"(?i)\n+(note|nota)[:\s].*$",
+            r"(?i)\n+\(.*?(nota|note|traducción|translation).*?\)",
+            r"(?i)\n+\*.*?\*",
         ]
 
         result = text
-        for pattern in prompt_leak_patterns + noise_patterns:
+        for pattern in intro_patterns + rule_patterns + suffix_patterns:
             result = re.sub(pattern, "", result, flags=re.MULTILINE | re.DOTALL)
 
-        # Si quedaron múltiples líneas vacías, limpiar
-        result = re.sub(r"\n{3,}", "\n\n", result)
-
-        # Si después de limpiar hay una línea de intro seguida del texto real,
-        # quedarse solo con la última parte significativa
+        # Si el modelo coló el texto original seguido de la traducción, quedarse solo con la última parte
         lines = [l.strip() for l in result.strip().splitlines() if l.strip()]
         if lines:
             result = " ".join(lines)
@@ -310,7 +337,7 @@ class VideoTranslatorPipeline:
 
     # -------------------------------------------------
 
-    def generate_voice_segments(self, data):
+    def generate_voice_segments(self, data, item_id=None):
 
         print("Generando TTS...")
 
@@ -323,23 +350,30 @@ class VideoTranslatorPipeline:
 
         # Intentar en GPU; si no hay VRAM suficiente, caer a CPU
         device = 'cuda'
-        try:
-            pipeline = KPipeline(lang_code='e', device=device)
-            print(f"Kokoro cargado en {device.upper()}")
-        except (torch.cuda.OutOfMemoryError, RuntimeError) as e:
-            print(f"VRAM insuficiente ({e}), cambiando a CPU...")
-            self.clear_vram()
-            device = 'cpu'
-            pipeline = KPipeline(lang_code='e', device=device)
-            print("Kokoro cargado en CPU")
+        
+        pipelines = {}
+        def get_pipeline(lang_code):
+            if lang_code not in pipelines:
+                try:
+                    pipelines[lang_code] = KPipeline(lang_code=lang_code, device=device)
+                    print(f"Kokoro ({lang_code}) cargado en {device.upper()}")
+                except (torch.cuda.OutOfMemoryError, RuntimeError) as e:
+                    print(f"VRAM insuficiente ({e}), cambiando a CPU...")
+                    self.clear_vram()
+                    fallback = 'cpu'
+                    pipelines[lang_code] = KPipeline(lang_code=lang_code, device=fallback)
+                    print(f"Kokoro ({lang_code}) cargado en CPU")
+            return pipelines[lang_code]
 
         if not os.path.exists(self.chunks_dir):
             os.makedirs(self.chunks_dir)
 
         for item in data:
+            if item_id is not None and item["id"] != item_id:
+                continue
 
-            text = item["translated_text"]
-            speaker = item["speaker"]
+            text = item.get("translated_text", "")
+            speaker = item.get("speaker", "SPEAKER_00")
 
             if not text:
                 continue
@@ -348,10 +382,17 @@ class VideoTranslatorPipeline:
             # Normalizamos convirtiéndolos en texto
             text_for_tts = self._normalize_numbers(text)
 
-            if speaker == "SPEAKER_00":
+            voice = item.get("voice", "ef_dora")
+            if not voice:
                 voice = "ef_dora"
-            else:
-                voice = "ef_dora"
+            
+            # ¡CRÍTICO! Guardar la voz de vuelta en el objeto para que persista en el JSON
+            item["voice"] = voice
+
+            print(f"[DEBUG-VOICE] Segmento {item['id']} ha solicitado explícitamente la voz: {voice}")
+
+            lang_code = voice[0]
+            pipeline = get_pipeline(lang_code)
 
             try:
                 generator = pipeline(text_for_tts, voice=voice, speed=1.1)
@@ -359,9 +400,9 @@ class VideoTranslatorPipeline:
             except (torch.cuda.OutOfMemoryError, RuntimeError) as e:
                 print(f"OOM en segmento {item['id']}, reintentando en CPU...")
                 self.clear_vram()
-                del pipeline
-                pipeline = KPipeline(lang_code='e', device='cpu')
-                generator = pipeline(text, voice=voice, speed=1.1)
+                fallback_pipe = KPipeline(lang_code=lang_code, device='cpu')
+                pipelines[lang_code] = fallback_pipe
+                generator = fallback_pipe(text_for_tts, voice=voice, speed=1.1)
                 audios = [audio for _, _, audio in generator]
 
             if audios:
@@ -370,13 +411,13 @@ class VideoTranslatorPipeline:
 
                 path = os.path.join(
                     self.chunks_dir,
-                    f"seg_{item['id']:03d}.wav"
+                    f"seg_{item['id']:03d}_{voice}.wav"
                 )
 
                 sf.write(path, audio, 24000)
 
                 item["audio_file"] = path
-                item["audio_duration"] = round(len(audio) / 24000, 3)
+                item["audio_duration"] = round(float(len(audio)) / 24000.0, 3)
 
         del pipeline
         self.clear_vram()
@@ -385,68 +426,235 @@ class VideoTranslatorPipeline:
 
     # -------------------------------------------------
 
+    def _get_video_duration(self):
+        """Obtiene la duración total del video usando ffprobe."""
+        result = subprocess.run(
+            ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+             "-of", "default=noprint_wrappers=1:nokey=1", self.video_path],
+            capture_output=True, text=True
+        )
+        return float(result.stdout.strip())
+
+    def _detect_video_encoder(self):
+        """Detecta el mejor encoder de video disponible en este sistema."""
+        candidates = [
+            ("h264_nvenc",  ["-c:v", "h264_nvenc"]),
+            ("libx264",     ["-c:v", "libx264", "-preset", "fast", "-crf", "18"]),
+            ("libx265",     ["-c:v", "libx265", "-preset", "fast", "-crf", "22"]),
+            ("mpeg4",       ["-c:v", "mpeg4", "-q:v", "4"]),
+            ("libvpx",      ["-c:v", "libvpx", "-crf", "10", "-b:v", "0"]),
+        ]
+        for name, flags in candidates:
+            result = subprocess.run(
+                ["ffmpeg", "-f", "lavfi", "-i", "color=black:s=64x64:d=0.1",
+                 "-vframes", "1"] + flags + ["-f", "null", "-"],
+                capture_output=True, text=True
+            )
+            if result.returncode == 0:
+                print(f"[ENCODER] Usando encoder de video: {name}")
+                return flags
+        # Último recurso: copia sin re-encoding (puede no funcionar con setpts)
+        print("[ENCODER] Ningún encoder encontrado, intentando copy...")
+        return ["-c:v", "copy"]
+
+    # -------------------------------------------------
+
     def assemble_final_video(self, data):
+        """
+        Ensamblado con sincronía híbrida (Capa 1 + Capa 2):
+        - Capa 1: Acelera audio hasta 1.25x si excede el slot original.
+        - Capa 2: Si el audio acelerado sigue excediendo el slot, estira el segmento de video para que encaje.
+        - Requiere libx264 (instalado en el sistema vía RPM Fusion).
+        """
+        print("Ensamblando video con sincronía híbrida...")
 
-        print("Ensamblando video...")
+        ATEMPO_THRESHOLD = 1.25   # Capa 1: acelerar audio hasta aquí
 
-        valid = [x for x in data if x["audio_file"]]
-
-        has_bg = getattr(self, "no_vocals_track", None) and os.path.exists(self.no_vocals_track)
-
-        inputs = ["-i", self.video_path]
-        if has_bg:
-            inputs += ["-i", self.no_vocals_track]
-            audio_start_idx = 2
-        else:
-            audio_start_idx = 1
-
-        filter_complex = ""
-
-        for i, item in enumerate(valid):
-
-            inputs += ["-i", item["audio_file"]]
-
-            idx = i + audio_start_idx
-            delay = int(item["start"] * 1000)
-            slot = item["duration"]
-            audio_dur = item.get("audio_duration", slot)
-
-            parts = f"[{idx}:a]"
-
-            if audio_dur > slot:
-                # Acelerar para que quepa en el slot (máx 1.4x)
-                speed = min(round(audio_dur / slot, 4), 1.4)
-                parts += f"atempo={speed},"
-                print(f"  Seg {item['id']}: {audio_dur:.2f}s > slot {slot:.2f}s → atempo={speed:.2f}x")
-
-            # Recortar al slot y aplicar delay
-            parts += f"atrim=duration={slot},adelay={delay}|{delay}[a{idx}];"
-
-            filter_complex += parts
-
-        labels = "".join([f"[a{i+audio_start_idx}]" for i in range(len(valid))])
-
-        if has_bg:
-            labels = f"[1:a]{labels}"
-            mix_count = len(valid) + 1
-        else:
-            mix_count = len(valid)
-
-        filter_complex += (
-            f"{labels}amix=inputs={mix_count}"
-            ":duration=longest:normalize=0[aout]"
+        valid = sorted(
+            [x for x in data if x.get("audio_file") and os.path.exists(x["audio_file"])],
+            key=lambda x: x["start"]
         )
 
-        cmd = ["ffmpeg"] + inputs + [
-            "-filter_complex", filter_complex,
-            "-map", "0:v",
-            "-map", "[aout]",
-            "-c:v", "copy",
-            "-c:a", "aac",
-            self.final_video, "-y"
-        ]
+        if not valid:
+            raise RuntimeError("No hay segmentos de audio válidos para ensamblar.")
 
-        subprocess.run(cmd)
+        # Fondo musical
+        bg_path = os.path.abspath(self.no_vocals_track)
+        has_bg = os.path.exists(bg_path)
+        if has_bg:
+            print(f"[BG] Usando pista de fondo: {bg_path}")
+        else:
+            print("[BG] No se encontró pista de fondo.")
+
+        # Duración total del video original
+        try:
+            video_total_dur = self._get_video_duration()
+        except Exception:
+            video_total_dur = valid[-1]["end"] + 2.0
+
+        # ------------------------------------------------------------------
+        # Fase 1: Calcular nuevo timeline
+        # ------------------------------------------------------------------
+        # video_segs: list of (v_start, v_end, stretch_factor)
+        # audio_segs: list of (audio_file, atempo, new_delay_seconds)
+
+        video_segs = []
+        audio_segs = []
+        new_cursor = 0.0   # Cursor en la nueva línea de tiempo
+        prev_v_end = 0.0   # Cursor en el video original
+
+        for item in valid:
+            v_start = float(item["start"])
+            v_end   = float(item["end"])
+            slot    = v_end - v_start
+            if slot <= 0:
+                continue
+
+            audio_dur = float(item.get("audio_duration", slot))
+            ratio = audio_dur / slot
+
+            # --- Gap antes de este segmento (sin audio, video a velocidad normal) ---
+            if v_start > prev_v_end + 0.01:
+                gap = v_start - prev_v_end
+                video_segs.append((prev_v_end, v_start, 1.0))
+                new_cursor += gap
+
+            # --- Capa 1: diferencia ≤ 25% → solo acelerar el audio ---
+            if ratio <= ATEMPO_THRESHOLD:
+                atempo      = float(max(1.0, round(ratio, 4)))
+                v_stretch   = 1.0
+                effective_a = audio_dur / atempo   # duración real tras atempo
+            else:
+                # --- Capa 2: diferencia > 25% → atempo 1.25x + video stretch ---
+                atempo    = ATEMPO_THRESHOLD
+                effective_a = audio_dur / atempo   # duración tras atempo al máx
+                v_stretch = effective_a / slot       # cuánto estirar el video
+                print(f"  Seg {item['id']}: ratio={ratio:.2f}x → atempo={atempo}x, "
+                      f"video_stretch={v_stretch:.2f}x")
+
+            video_segs.append((v_start, v_end, v_stretch))
+            audio_segs.append((item["audio_file"], atempo, new_cursor))
+
+            new_cursor += effective_a
+            prev_v_end = v_end
+
+        # Gap final del video
+        if prev_v_end < video_total_dur - 0.01:
+            video_segs.append((prev_v_end, video_total_dur, 1.0))
+
+        # ------------------------------------------------------------------
+        # Fase 2: Codificar cada segmento de video y unir con audio
+        # ------------------------------------------------------------------
+        import tempfile, shutil
+
+        tmp_dir = tempfile.mkdtemp(prefix="doblado_")
+        seg_files = []
+
+        try:
+            # Paso A: Codificar cada segmento de video en archivo temporal .ts
+            for i, (vs, ve, stretch) in enumerate(video_segs):
+                tmp_out = os.path.join(tmp_dir, f"vseg_{i:03d}.ts")
+                seg_cmd = [
+                    "ffmpeg",
+                    "-ss", f"{vs:.4f}", "-to", f"{ve:.4f}",
+                    "-i", self.video_path,
+                    "-vf", f"setpts=(PTS-STARTPTS)*{stretch:.6f}",
+                    "-c:v", "libx264", "-preset", "fast", "-crf", "23",
+                    "-an",
+                    "-avoid_negative_ts", "make_zero",
+                    "-f", "mpegts",
+                    tmp_out, "-y"
+                ]
+                print(f"  [V-seg {i}] {vs:.2f}→{ve:.2f}s x{stretch:.2f}")
+                res = subprocess.run(seg_cmd, capture_output=True, text=True)
+                if res.returncode != 0:
+                    print(f"  [V-seg {i}] ERROR: {res.stderr[-500:]}")
+                    raise subprocess.CalledProcessError(res.returncode, seg_cmd, res.stderr)
+                seg_files.append(tmp_out)
+
+            # Paso B: Unir los segmentos de video de forma secuencial
+            # (El demuxer consume muchísima menos RAM que el filtro concat porque procesa 1 archivo a la vez)
+            concat_list = os.path.join(tmp_dir, "concat.txt")
+            with open(concat_list, "w") as f:
+                for sf in seg_files:
+                    f.write(f"file '{sf}'\n")
+
+            video_joined = os.path.join(tmp_dir, "video_joined.mp4")
+            join_cmd = [
+                "ffmpeg",
+                "-f", "concat", "-safe", "0",
+                "-i", concat_list,
+                "-c:v", "libx264", "-preset", "fast", "-crf", "23", # Re-encode para asegurar timestamps
+                "-an",
+                video_joined, "-y"
+            ]
+            
+            print(f"[CONCAT] Uniendo {len(seg_files)} segmentos de video secuencialmente...")
+            res = subprocess.run(join_cmd, capture_output=True, text=True)
+            if res.returncode != 0:
+                print(f"[CONCAT] ERROR: {res.stderr[-2000:]}")
+                raise subprocess.CalledProcessError(res.returncode, join_cmd, res.stderr)
+
+            # Paso C: Montar el audio mezclado sobre el video ya ensamblado
+            audio_inputs = []
+            if has_bg:
+                audio_inputs += ["-i", bg_path]
+            for af, _, _ in audio_segs:
+                audio_inputs += ["-i", af]
+
+            a_offset_local = 1  # [0]=video_joined, [1..]=audios
+            if has_bg:
+                a_offset_local = 2
+
+            fc = ""
+            if has_bg:
+                fc += "[1:a]volume=0.4[bg];"
+
+            a_out_labels = []
+            for i, (af, atempo, delay_s) in enumerate(audio_segs):
+                idx = a_offset_local + i
+                delay_ms = int(delay_s * 1000)
+                chunk = f"[{idx}:a]dynaudnorm=p=0.9:m=100,"
+                if atempo > 1.001:
+                    chunk += f"atempo={atempo:.4f},"
+                chunk += f"adelay={delay_ms}|{delay_ms}[ao{i}];"
+                fc += chunk
+                a_out_labels.append(f"[ao{i}]")
+
+            if has_bg:
+                all_a = "[bg]" + "".join(a_out_labels)
+                mix_n = len(audio_segs) + 1
+            else:
+                all_a = "".join(a_out_labels)
+                mix_n = len(audio_segs)
+
+            fc += f"{all_a}amix=inputs={mix_n}:duration=longest:normalize=0[aout]"
+
+            final_cmd = (
+                ["ffmpeg", "-i", video_joined]
+                + audio_inputs
+                + [
+                    "-filter_complex", fc,
+                    "-map", "0:v",
+                    "-map", "[aout]",
+                    "-c:v", "copy",
+                    "-c:a", "aac",
+                    "-b:a", "192k",
+                    self.final_video, "-y"
+                ]
+            )
+
+            print(f"[MIX] Añadiendo las pistas de audio ({len(audio_segs)})...")
+            res = subprocess.run(final_cmd, capture_output=True, text=True)
+            if res.returncode != 0:
+                print(f"[MIX] ERROR: {res.stderr[-3000:]}")
+                raise subprocess.CalledProcessError(res.returncode, final_cmd, res.stderr)
+
+            print("Video ensamblado correctamente.")
+
+        finally:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+
 
     # -------------------------------------------------
 

@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Doblador IA Dashboard</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <header>
+        <span class="mic-icon" style="font-size: 2.2rem; filter: hue-rotate(250deg) saturate(3);">🎙️</span>
+        <div>
+            <h1>Doblador IA</h1>
+            <p>Dashboard de Traducción y Doblaje Automático</p>
+        </div>
+    </header>
+
+    <div class="dashboard-grid">
+        <!-- Panel 1: Archivos / Preview Video -->
+        <div class="panel p-archivos" style="grid-column: 1; grid-row: 1;">
+            <h2>🎬 Video Seleccionado</h2>
+            <div id="video-container" class="video-container empty">
+                <span id="video-placeholder">No hay video cargado</span>
+                <video id="video-preview" controls crossorigin="anonymous"></video>
+            </div>
+            <div id="status-panel">
+                <strong>Estado:</strong> <span id="current-status">Esperando video...</span>
+            </div>
+        </div>
+
+        <!-- Panel 2: Subir / Origen (COMPACT) -->
+        <div class="panel p-subir" style="grid-column: 1; grid-row: 2;">
+            <h2>📥 Origen del Video</h2>
+            
+            <div class="tabs">
+                <button class="tab-btn active" onclick="switchTab('local')" style="padding: 0.25rem 0.5rem; font-size: 0.8rem;">Local</button>
+                <button class="tab-btn" onclick="switchTab('youtube')" style="padding: 0.25rem 0.5rem; font-size: 0.8rem;">YouTube</button>
+            </div>
+
+            <div id="tab-local" class="tab-content active">
+                <input type="file" id="video-file" accept="video/mp4,video/mkv,video/webm" style="padding: 0.5rem;">
+            </div>
+
+            <div id="tab-youtube" class="tab-content">
+                <input type="text" id="youtube-url" placeholder="Ej: https://youtube.com/..." style="padding: 0.5rem;">
+            </div>
+
+            <div style="display: flex; gap: 0.5rem; align-items: center; margin-bottom: 0.5rem;">
+                <select id="source-lang" style="padding: 0.5rem; font-size: 0.85rem;">
+                    <option value="">Auto</option>
+                    <option value="en">EN</option>
+                    <option value="es">ES</option>
+                    <option value="ja">JA</option>
+                    <option value="zh">ZH</option>
+                </select>
+                <span style="color:var(--text-muted)">➡️</span>
+                <select id="target-lang" style="padding: 0.5rem; font-size: 0.85rem;">
+                    <option value="es" selected>ES</option>
+                    <option value="en">EN</option>
+                </select>
+            </div>
+
+            <button id="btn-upload" class="action-btn primary-btn" style="padding: 0.5rem;">Cargar Módulo</button>
+        </div>
+
+        <!-- Panel 3: Acciones -->
+        <div class="panel p-acciones" style="grid-column: 1; grid-row: 3;">
+            <h2>⚙️ Pipeline</h2>
+            <div class="workflow-steps">
+                <div class="step disabled" id="step-transcribe">
+                    <button id="btn-transcribe" class="action-btn">1. Transcribir</button>
+                </div>
+                <div class="step disabled" id="step-translate">
+                    <button id="btn-translate" class="action-btn">2. Traducir Texto</button>
+                </div>
+                <div class="step disabled" id="step-audio">
+                    <label for="global-voice-select" style="font-size:0.78rem; color:#8b949e; margin-bottom:0.3rem; display:block;">🎙️ Voz por defecto:</label>
+                    <select id="global-voice-select" style="width:100%; padding:0.4rem 0.5rem; font-size:0.82rem; margin-bottom:0.5rem; background:#0d1117; color:#c9d1d9; border:1px solid #30363d; border-radius:6px;">
+                        <option value="" disabled selected>-- Elige una voz --</option>
+                        <!-- Se rellena dinámicamente -->
+                    </select>
+                    <button id="btn-audio" class="action-btn">3. Generar Voces</button>
+                </div>
+                <div class="step disabled" id="step-assemble">
+                    <button id="btn-assemble" class="action-btn accent-btn">4. Mezclar Video</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Panel 4: Resultados / Tabla -->
+        <div class="panel p-resultados" style="grid-column: 2; grid-row: 1 / span 3; display: flex; flex-direction: column;">
+            <div class="resultados-header">
+                <h2>📝 Editor Multilinea</h2>
+                <button id="btn-save-data" class="action-btn outline-btn hidden">Guardar Todo</button>
+            </div>
+            
+            <div class="table-container" id="data-editor" style="flex:1;">
+                <table id="segments-table">
+                    <thead>
+                        <tr>
+                            <th width="3%">ID</th>
+                            <th width="8%">Hablante</th>
+                            <th width="10%">Tiempo</th>
+                            <th width="24%">Original</th>
+                            <th width="25%">Traducción</th>
+                            <th width="10%">Voz Kokoro</th>
+                            <th width="20%">Audio</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr><td colspan="7" style="text-align: center; color: #8b949e; padding: 2rem;">Los resultados aparecerán aquí.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // Cache buster for JS
+        var script = document.createElement('script');
+        script.src = "app.js?v=" + new Date().getTime();
+        document.body.appendChild(script);
+    </script>
+</body>
+</html>

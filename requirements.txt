@@ -1,0 +1,12 @@
+requests
+faster-whisper
+demucs
+pyannote.audio
+kokoro
+soundfile
+numpy
+num2words
+yt-dlp
+fastapi
+uvicorn
+python-multipart

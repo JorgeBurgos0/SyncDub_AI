@@ -52,3 +52,10 @@ tmp/
 # Archivos del Sistema Operativo generados
 .DS_Store
 Thumbs.db
+
+# Exclusivo del Proyecto Traductor IA
+uploads/
+kokoro-v0_19/
+*.mp4
+*.wav
+*.json
