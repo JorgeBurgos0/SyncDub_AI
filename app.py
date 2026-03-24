@@ -1,4 +1,4 @@
-from fastapi import FastAPI, UploadFile, File, Form, BackgroundTasks, Query
+from fastapi import FastAPI, UploadFile, File, Form, BackgroundTasks, Query, Body
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -133,7 +133,7 @@ def process_generate_audio(project_id, item_id=None, voice_override=None):
             data = json.load(f)
         
         if voice_override:
-            print(f"[INFO] Aplicando voz '{voice_override}' a {'segmento ' + str(item_id) if item_id else 'todos los segmentos'}")
+            print(f"[INFO] Applying voice '{voice_override}' to {'segment ' + str(item_id) if item_id else 'all segments'}")
             for item in data:
                 if item_id is None or item["id"] == item_id:
                     item["voice"] = voice_override
@@ -193,7 +193,7 @@ async def get_data(project_id: str):
     return []
 
 @app.put("/api/data/{project_id}")
-async def update_data(project_id: str, data: list):
+async def update_data(project_id: str, data: list = Body(...)):
     if project_id not in pipelines:
         return JSONResponse(status_code=404, content={"error": "Project not found"})
     pipe = pipelines[project_id]

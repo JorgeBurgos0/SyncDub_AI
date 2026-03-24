@@ -35,7 +35,7 @@ async function pollStatus() {
             const baseName = projectId.substring(0, projectId.lastIndexOf('.')) || projectId;
             const videoUrl = `/uploads/${baseName}_DOBLADO.mp4`;
 
-            statusPanel.innerHTML = `Video ensamblado exitosamente. <a href="${videoUrl}" target="_blank" style="color:#58a6ff;">Ver HD</a>`;
+            statusPanel.innerHTML = `Video assembled successfully. <a href="${videoUrl}" target="_blank" style="color:#58a6ff;">View HD</a>`;
 
             videoPreview.src = videoUrl;
             videoContainer.classList.remove('empty');
@@ -189,7 +189,7 @@ function renderTable() {
         let voiceSelect = `<select id="voice-sel-${item.id}" class="cell-edit-sm" onchange="updateVoice(${index}, ${item.id}, this.value)">`;
         let curVoice = item.voice || '';
         if (!curVoice) {
-            voiceSelect += `<option value="" disabled selected>-- Elige --</option>`;
+            voiceSelect += `<option value="" disabled selected>-- Choose --</option>`;
         }
         voiceOptions.forEach(v => {
             let selected = (v.id === curVoice) ? 'selected' : '';
@@ -203,21 +203,21 @@ function renderTable() {
             // Evitar que el navegador reproduzca el WAV viejo (con la voz original de Dora) de la caché
             audioControls = `
                 <div class="audio-ctrl">
-                    <button class="audio-btn" title="Reproducir" onclick="playAudio('${url}?t=${new Date().getTime()}')">▶</button>
-                    <button class="audio-btn outline-btn" title="Pausar" onclick="stopAudio()">⏸</button>
-                    <button class="audio-btn outline-btn" title="Regenerar" onclick="regenAudio(${item.id})">↻</button>
+                    <button class="audio-btn" title="Play" onclick="playAudio('${url}?t=${new Date().getTime()}')">▶</button>
+                    <button class="audio-btn outline-btn" title="Pause" onclick="stopAudio()">⏸</button>
+                    <button id="regen-btn-${item.id}" class="audio-btn outline-btn" title="Regenerate" onclick="regenAudio(${item.id})">↻</button>
                 </div>
             `;
         } else {
-            audioControls = `<button class="audio-btn outline-btn" onclick="regenAudio(${item.id})">Generar</button>`;
+            audioControls = `<button id="regen-btn-${item.id}" class="audio-btn outline-btn" onclick="regenAudio(${item.id})">Generate</button>`;
         }
 
         tr.innerHTML = `
             <td>${item.id}</td>
-            <td><input type="text" class="cell-edit-sm" value="${item.speaker}" onchange="updateItem(${index}, 'speaker', this.value)"></td>
+            <td><input type="text" class="cell-edit-sm" value="${item.speaker}" onchange="updateItem(${index}, 'speaker', this.value, ${item.id})"></td>
             <td style="font-size:0.8rem; color:#8b949e;">${item.start} - ${item.end}</td>
-            <td><textarea class="cell-edit-area" onchange="updateItem(${index}, 'original_text', this.value)">${item.original_text || ''}</textarea></td>
-            <td><textarea class="cell-edit-area" onchange="updateItem(${index}, 'translated_text', this.value)">${item.translated_text || ''}</textarea></td>
+            <td><textarea class="cell-edit-area" onchange="updateItem(${index}, 'original_text', this.value, ${item.id})">${item.original_text || ''}</textarea></td>
+            <td><textarea class="cell-edit-area" onchange="updateItem(${index}, 'translated_text', this.value, ${item.id})">${item.translated_text || ''}</textarea></td>
             <td>${voiceSelect}</td>
             <td>${audioControls}</td>
         `;
@@ -225,13 +225,24 @@ function renderTable() {
     });
 }
 
-function updateItem(index, key, value) {
+function markAsStale(itemId) {
+    const btnBox = document.getElementById(`regen-btn-${itemId}`);
+    if (btnBox) {
+        btnBox.style.backgroundColor = '#d73a49';
+        btnBox.style.color = '#ffffff';
+        btnBox.title = 'Unsaved changes! Click to regenerate audio';
+    }
+}
+
+function updateItem(index, key, value, itemId) {
     currentData[index][key] = value;
+    if (itemId !== undefined) markAsStale(itemId);
 }
 
 // Actualización de voz en memoria y DOM
 function updateVoice(index, itemId, value) {
     currentData[index]['voice'] = value;
+    markAsStale(itemId);
     console.log(`[VOICE] Segment ${itemId} voice set to: ${value}`);
 }
 
@@ -250,6 +261,21 @@ function stopAudio() {
     }
 }
 
+async function syncDataToBackend() {
+    if (!currentData || currentData.length === 0) return true;
+    const res = await fetch(`/api/data/${projectId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(currentData)
+    });
+    if (!res.ok) {
+        const errorText = await res.text();
+        alert("Critical error saving data: " + res.status + " " + errorText);
+        throw new Error("Sync failed");
+    }
+    return true;
+}
+
 // Regenerates audio for a single segment ID
 async function regenAudio(itemId) {
     // Read voice directly from the row's select element
@@ -257,7 +283,7 @@ async function regenAudio(itemId) {
     const rowVoice = rowSel ? rowSel.value : null;
 
     if (!rowVoice) {
-        alert(`Seleccione una voz en la fila del segmento ${itemId} antes de regenerar.`);
+        alert(`Please select a voice for segment ${itemId} before regenerating.`);
         return;
     }
 
@@ -265,15 +291,18 @@ async function regenAudio(itemId) {
     const item = currentData.find(d => d.id === itemId);
     if (item) item.voice = rowVoice;
 
-    lockSteps();
-    statusPanel.innerText = `Regenerando segmento ${itemId} con voz: ${rowVoice}...`;
+    const btnBox = document.getElementById(`regen-btn-${itemId}`);
+    if (btnBox) {
+        btnBox.style.backgroundColor = '';
+        btnBox.style.color = '';
+        btnBox.title = 'Regenerate';
+    }
 
-    // Persistencia de estado
-    await fetch(`/api/data/${projectId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(currentData)
-    });
+    lockSteps();
+    statusPanel.innerText = `Regenerating segment ${itemId} with voice: ${rowVoice}...`;
+
+    // Persistencia de estado garantizada
+    await syncDataToBackend();
 
     // Pasar la voz directo en la URL como parámetro
     await fetch(`/api/generate-audio/${projectId}/${itemId}?voice=${encodeURIComponent(rowVoice)}`, { method: 'POST' });
@@ -285,7 +314,7 @@ document.getElementById('btn-upload').addEventListener('click', async () => {
     const sourceLang = document.getElementById('source-lang').value;
     const targetLang = document.getElementById('target-lang').value;
 
-    statusPanel.innerText = "Iniciando descarga/carga...";
+    statusPanel.innerText = "Initializing upload/download...";
     lockSteps();
 
     const formData = new FormData();
@@ -296,13 +325,13 @@ document.getElementById('btn-upload').addEventListener('click', async () => {
 
     if (isYoutube) {
         const url = document.getElementById('youtube-url').value;
-        if (!url) return alert("Ingresa URL de YouTube");
+        if (!url) return alert("Enter YouTube URL");
         formData.append('url', url);
         endpoint = '/api/youtube';
     } else {
         const fileInput = document.getElementById('video-file');
         if (!fileInput.files[0]) {
-            alert("Selecciona un video local");
+            alert("Select a local video file");
             unlockSteps();
             return;
         }
@@ -324,7 +353,7 @@ document.getElementById('btn-upload').addEventListener('click', async () => {
         }
 
         projectId = data.project_id;
-        statusPanel.innerText = data.status || "Video preparado.";
+        statusPanel.innerText = data.status || "Video ready.";
 
         videoPreview.src = `/uploads/${projectId}`;
         videoContainer.classList.remove('empty');
@@ -352,26 +381,23 @@ document.getElementById('btn-translate').addEventListener('click', async () => {
 
 document.getElementById('btn-save-data').addEventListener('click', async () => {
     try {
-        const res = await fetch(`/api/data/${projectId}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(currentData)
-        });
-        const d = await res.json();
-        alert(d.message || "Guardado!");
+        await syncDataToBackend();
+        alert("Data synchronized successfully!");
     } catch (e) {
-        alert(e);
+        console.error(e);
     }
 });
 
 document.getElementById('btn-audio').addEventListener('click', async () => {
     const globalVoice = getGlobalVoice();
     if (!globalVoice) {
-        alert('Por favor elige una voz antes de generar.');
+        alert('Please choose a default voice before generating.');
         return;
     }
     lockSteps();
-    statusPanel.innerText = `Generando voces con: ${globalVoice}...`;
+    statusPanel.innerText = `Generating voices with: ${globalVoice}...`;
+
+    try { await syncDataToBackend(); } catch (e) { return unlockSteps(); }
 
     // Envío de la voz como parámetro URL
     await fetch(`/api/generate-audio/${projectId}?voice=${encodeURIComponent(globalVoice)}`, { method: 'POST' });
@@ -380,6 +406,7 @@ document.getElementById('btn-audio').addEventListener('click', async () => {
 
 document.getElementById('btn-assemble').addEventListener('click', async () => {
     lockSteps();
+    try { await syncDataToBackend(); } catch (e) { return unlockSteps(); }
     await fetch(`/api/assemble/${projectId}`, { method: 'POST' });
     startPolling();
 });

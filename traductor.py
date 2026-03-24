@@ -29,7 +29,7 @@ class VideoTranslatorPipeline:
 
     def free_gpu(self):
 
-        print("Liberando VRAM...")
+        print("Freeing VRAM...")
 
         try:
             subprocess.run(["pkill", "-u", os.getenv("USER", ""), "ollama"],
@@ -54,7 +54,7 @@ class VideoTranslatorPipeline:
 
     def run_pipeline(self):
 
-        print("Iniciando pipeline...")
+        print("Starting pipeline...")
 
         self.free_gpu()
 
@@ -82,13 +82,13 @@ class VideoTranslatorPipeline:
 
         self.assemble_final_video(pipeline_data)
 
-        print("Proceso finalizado.")
+        print("Process finished.")
 
     # -------------------------------------------------
 
     def extract_audio(self):
 
-        print("Extrayendo audio...")
+        print("Extracting audio...")
 
         cmd = [
             "ffmpeg", "-i", self.video_path,
@@ -103,7 +103,7 @@ class VideoTranslatorPipeline:
 
     def separate_audio(self):
 
-        print("Separando voces y música con Demucs...")
+        print("Separating vocals and music with Demucs...")
 
         cmd = ["demucs", "--two-stems=vocals", self.audio_track_orig]
         subprocess.run(cmd)
@@ -112,7 +112,7 @@ class VideoTranslatorPipeline:
 
     def transcribe_audio(self):
 
-        print("Whisper transcribiendo...")
+        print("Whisper transcribing...")
 
         from faster_whisper import WhisperModel
 
@@ -125,9 +125,9 @@ class VideoTranslatorPipeline:
                 cpu_threads=4,
                 num_workers=1
             )
-            print("Whisper cargado en CUDA")
+            print("Whisper loaded on CUDA")
         except (RuntimeError, Exception) as e:
-            print(f"VRAM insuficiente para Whisper ({e}), usando CPU...")
+            print(f"Insufficient VRAM for Whisper ({e}), using CPU...")
             self.clear_vram()
             model = WhisperModel(
                 "large-v3",
@@ -136,7 +136,7 @@ class VideoTranslatorPipeline:
                 cpu_threads=4,
                 num_workers=1
             )
-            print("Whisper cargado en CPU")
+            print("Whisper loaded on CPU")
 
         segments, _ = model.transcribe(
             self.audio_track_orig,
@@ -171,7 +171,7 @@ class VideoTranslatorPipeline:
 
     def detect_speakers(self):
 
-        print("Detectando hablantes...")
+        print("Detecting speakers...")
 
         from pyannote.audio import Pipeline
 
@@ -184,7 +184,7 @@ class VideoTranslatorPipeline:
                 token=hf_token
             )
         except Exception as e:
-            print(f"[PYANNOTE] Error cargando modelo: {e}")
+            print(f"[PYANNOTE] Error loading model: {e}")
             raise
 
         pipeline.to(torch.device("cpu"))
@@ -213,7 +213,7 @@ class VideoTranslatorPipeline:
 
     def assign_speakers(self, whisper_data, speaker_data):
 
-        print("Asignando hablantes al texto...")
+        print("Assigning speakers to text...")
 
         last_known_speaker = speaker_data[0]["speaker"] if speaker_data else "SPEAKER_00"
 
@@ -341,7 +341,7 @@ class VideoTranslatorPipeline:
 
     def generate_voice_segments(self, data, item_id=None):
 
-        print("Generando TTS...")
+        print("Generating TTS...")
 
         # Liberación de memoria previa a la carga de Kokoro
         self.free_gpu()
@@ -358,13 +358,13 @@ class VideoTranslatorPipeline:
             if lang_code not in pipelines:
                 try:
                     pipelines[lang_code] = KPipeline(lang_code=lang_code, device=device)
-                    print(f"Kokoro ({lang_code}) cargado en {device.upper()}")
+                    print(f"Kokoro ({lang_code}) loaded on {device.upper()}")
                 except (torch.cuda.OutOfMemoryError, RuntimeError) as e:
-                    print(f"VRAM insuficiente ({e}), cambiando a CPU...")
+                    print(f"Insufficient VRAM ({e}), switching to CPU...")
                     self.clear_vram()
                     fallback = 'cpu'
                     pipelines[lang_code] = KPipeline(lang_code=lang_code, device=fallback)
-                    print(f"Kokoro ({lang_code}) cargado en CPU")
+                    print(f"Kokoro ({lang_code}) loaded on CPU")
             return pipelines[lang_code]
 
         if not os.path.exists(self.chunks_dir):
@@ -390,7 +390,7 @@ class VideoTranslatorPipeline:
             # Persistencia de la voz seleccionada en el objeto
             item["voice"] = voice
 
-            print(f"[DEBUG-VOICE] Segmento {item['id']} ha solicitado explícitamente la voz: {voice}")
+            print(f"[DEBUG-VOICE] Segment {item['id']} explicitly requested voice: {voice}")
 
             lang_code = voice[0]
             pipeline = get_pipeline(lang_code)
@@ -399,7 +399,7 @@ class VideoTranslatorPipeline:
                 generator = pipeline(text_for_tts, voice=voice, speed=1.1)
                 audios = [audio for _, _, audio in generator]
             except (torch.cuda.OutOfMemoryError, RuntimeError) as e:
-                print(f"OOM en segmento {item['id']}, reintentando en CPU...")
+                print(f"OOM on segment {item['id']}, retrying on CPU...")
                 self.clear_vram()
                 fallback_pipe = KPipeline(lang_code=lang_code, device='cpu')
                 pipelines[lang_code] = fallback_pipe
@@ -452,10 +452,10 @@ class VideoTranslatorPipeline:
                 capture_output=True, text=True
             )
             if result.returncode == 0:
-                print(f"[ENCODER] Usando encoder de video: {name}")
+                print(f"[ENCODER] Using video encoder: {name}")
                 return flags
         # Fallback a copia sin re-encoding
-        print("[ENCODER] Ningún encoder encontrado, intentando copy...")
+        print("[ENCODER] No encoder found, attempting copy...")
         return ["-c:v", "copy"]
 
     # -------------------------------------------------
@@ -467,7 +467,7 @@ class VideoTranslatorPipeline:
         2. Ajuste de segmento de video si la aceleración de audio no es suficiente.
         Requiere libx264.
         """
-        print("Ensamblando video con sincronía híbrida...")
+        print("Assembling video with hybrid synchrony...")
 
         ATEMPO_THRESHOLD = 1.25
 
@@ -477,15 +477,15 @@ class VideoTranslatorPipeline:
         )
 
         if not valid:
-            raise RuntimeError("No hay segmentos de audio válidos para ensamblar.")
+            raise RuntimeError("No valid audio segments to assemble.")
 
         # Procesamiento de pista de fondo
         bg_path = os.path.abspath(self.no_vocals_track)
         has_bg = os.path.exists(bg_path)
         if has_bg:
-            print(f"[BG] Usando pista de fondo: {bg_path}")
+            print(f"[BG] Using background track: {bg_path}")
         else:
-            print("[BG] No se encontró pista de fondo.")
+            print("[BG] Background track not found.")
 
         # Cálculo de la duración total del video
         try:
@@ -589,7 +589,7 @@ class VideoTranslatorPipeline:
                 video_joined, "-y"
             ]
             
-            print(f"[CONCAT] Uniendo {len(seg_files)} segmentos de video secuencialmente...")
+            print(f"[CONCAT] Joining {len(seg_files)} video segments sequentially...")
             res = subprocess.run(join_cmd, capture_output=True, text=True)
             if res.returncode != 0:
                 print(f"[CONCAT] ERROR: {res.stderr[-2000:]}")
@@ -644,13 +644,13 @@ class VideoTranslatorPipeline:
                 ]
             )
 
-            print(f"[MIX] Añadiendo las pistas de audio ({len(audio_segs)})...")
+            print(f"[MIX] Adding audio tracks ({len(audio_segs)})...")
             res = subprocess.run(final_cmd, capture_output=True, text=True)
             if res.returncode != 0:
                 print(f"[MIX] ERROR: {res.stderr[-3000:]}")
                 raise subprocess.CalledProcessError(res.returncode, final_cmd, res.stderr)
 
-            print("Video ensamblado correctamente.")
+            print("Video assembled successfully.")
 
         finally:
             shutil.rmtree(tmp_dir, ignore_errors=True)
@@ -669,26 +669,26 @@ class VideoTranslatorPipeline:
 
 # Códigos de idioma comunes para referencia
 IDIOMAS = {
-    "1": ("ja", "Japonés"),
-    "2": ("en", "Inglés"),
-    "3": ("zh", "Chino"),
-    "4": ("ko", "Coreano"),
-    "5": ("fr", "Francés"),
-    "6": ("de", "Alemán"),
-    "7": ("pt", "Portugués"),
-    "8": ("it", "Italiano"),
-    "9": ("ru", "Ruso"),
-    "0": (None, "Autodetectar"),
+    "1": ("ja", "Japanese"),
+    "2": ("en", "English"),
+    "3": ("zh", "Chinese"),
+    "4": ("ko", "Korean"),
+    "5": ("fr", "French"),
+    "6": ("de", "German"),
+    "7": ("pt", "Portuguese"),
+    "8": ("it", "Italian"),
+    "9": ("ru", "Russian"),
+    "0": (None, "Autodetect"),
 }
 
 if __name__ == "__main__":
 
     import argparse
 
-    parser = argparse.ArgumentParser(description="Doblador de video con IA")
-    parser.add_argument("video", nargs="?", help="Ruta del video a doblar")
-    parser.add_argument("--lang", default="es", help="Idioma destino (default: es)")
-    parser.add_argument("--source", default=None, help="Idioma fuente (ej: ja, en, zh). Sin valor = autodetectar")
+    parser = argparse.ArgumentParser(description="AI Video Dubber")
+    parser.add_argument("video", nargs="?", help="Path of video to dub")
+    parser.add_argument("--lang", default="es", help="Target language (default: es)")
+    parser.add_argument("--source", default=None, help="Source language (e.g., ja, en, zh). No value = autodetect")
     args = parser.parse_args()
 
     video = args.video
@@ -703,40 +703,40 @@ if __name__ == "__main__":
         ])
 
         if not videos:
-            print(" No se encontraron videos en la carpeta actual.")
+            print(" No videos found in current folder.")
             exit(1)
 
-        print("\n Videos disponibles:")
+        print("\n Available videos:")
         for i, v in enumerate(videos, 1):
             print(f"  [{i}] {v}")
 
         while True:
             try:
-                opcion = int(input("\n¿Cuál quieres doblar? (número): "))
+                opcion = int(input("\nWhich one to dub? (number): "))
                 if 1 <= opcion <= len(videos):
                     video = videos[opcion - 1]
                     break
-                print(f"Elige un número entre 1 y {len(videos)}.")
+                print(f"Choose a number between 1 and {len(videos)}.")
             except ValueError:
-                print("Escribe un número válido.")
+                print("Enter a valid number.")
 
     # Solicitar el idioma de origen si no se proporciona
     if source_lang is None:
 
-        print("\n Idioma del video original:")
+        print("\n Original video language:")
         for k, (code, nombre) in IDIOMAS.items():
             print(f"  [{k}] {nombre}" + (f" ({code})" if code else ""))
 
-        opcion_lang = input("\n¿Cuál es el idioma del video? (número): ").strip()
-        code, nombre = IDIOMAS.get(opcion_lang, (None, "Autodetectar"))
+        opcion_lang = input("\nWhat is the video language? (number): ").strip()
+        code, nombre = IDIOMAS.get(opcion_lang, (None, "Autodetect"))
         source_lang = code
-        print(f"✔ Idioma seleccionado: {nombre}")
+        print(f"✔ Selected language: {nombre}")
 
     if not os.path.exists(video):
-        print(f" Video no encontrado: {video}")
+        print(f" Video not found: {video}")
         exit(1)
 
-    print(f"\n▶ Procesando: {video}")
+    print(f"\n▶ Processing: {video}")
     pipeline = VideoTranslatorPipeline(
         video,
         target_language=args.lang,

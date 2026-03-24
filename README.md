@@ -1,4 +1,4 @@
-# 🎙️ AI Video Dubbing (Traductor IA)
+# 🎙️ SyncDub AI (AI Video Dubbing)
 
 ![Doblador IA Dashboard](Captura.png)
 
