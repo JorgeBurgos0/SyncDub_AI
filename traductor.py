@@ -119,7 +119,7 @@ class VideoTranslatorPipeline:
         # Intento de carga en GPU, con fallback a CPU si falta VRAM.
         try:
             model = WhisperModel(
-                "small",
+                "large-v3",
                 device="cuda",
                 compute_type="int8_float16",
                 cpu_threads=4,
@@ -130,7 +130,7 @@ class VideoTranslatorPipeline:
             print(f"VRAM insuficiente para Whisper ({e}), usando CPU...")
             self.clear_vram()
             model = WhisperModel(
-                "small",
+                "large-v3",
                 device="cpu",
                 compute_type="int8",
                 cpu_threads=4,
@@ -140,9 +140,11 @@ class VideoTranslatorPipeline:
 
         segments, _ = model.transcribe(
             self.audio_track_orig,
-            beam_size=5,
+            beam_size=10,
             vad_filter=True,
-            language=self.source_language  # None activa autodetectado
+            language=self.source_language,  # None activa autodetectado
+            condition_on_previous_text=False,
+            temperature=[0.0, 0.2, 0.4, 0.6, 0.8, 1.0]
         )
 
         data = []

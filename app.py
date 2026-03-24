@@ -149,7 +149,7 @@ def process_generate_audio(project_id, item_id=None, voice_override=None):
 @app.post("/api/generate-audio/{project_id}")
 async def generate_audio(project_id: str, background_tasks: BackgroundTasks, voice: Optional[str] = Query(None)):
     if project_id not in pipelines:
-        return JSONResponse(status_code=404, content={"error": "Project not found"})
+        return JSONResponse(status_code=404, content={"error": "dProject not found"})
     background_tasks.add_task(process_generate_audio, project_id, None, voice)
     return {"message": f"Audio generation started" + (f" with voice {voice}" if voice else "")}
 

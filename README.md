@@ -1,44 +1,56 @@
-# 🎙️ Traductor IA (AI Video Dubbing)
+# 🎙️ AI Video Dubbing (Traductor IA)
 
-Una aplicación que automatiza el proceso de traducción y doblaje de videos. Utiliza un backend asíncrono en FastAPI y un panel web para transcribir, traducir, generar voces y ensamblar el video final conservando la música de fondo original.
+![Doblador IA Dashboard](Captura.png)
 
-## Características
+An application that automates the video translation and dubbing process. It uses an asynchronous FastAPI backend and a web dashboard to transcribe, translate, generate voiceovers, and assemble the final video while preserving the original background music.
 
-- **Integración con YouTube**: Descarga y procesa videos mediante `yt-dlp`.
-- **Transcripción**: Reconocimiento de audio con `faster-whisper`.
-- **Diarización de Hablantes**: Identifica y separa a los diferentes locutores con `pyannote.audio`.
-- **Separación de Audio**: Aísla las voces de la música de fondo o SFX usando `demucs`.
-- **Traducción Neuronal**: Traducción de textos utilizando el modelo `demonbyron/HY-MT1.5-7B` a través de Ollama.
-- **Síntesis de Voz (TTS)**: Generación de voces en múltiples idiomas con `kokoro`.
-- **Editor Interactivo**: Interfaz web para editar traducciones, cambiar voces y regenerar audios por segmento.
-- **Ensamblaje de Video**: Mezcla de audio y sincronización híbrida (audio/video) usando FFmpeg.
+## Features
 
-## Tecnologías
+- **YouTube Integration**: Download and process videos using `yt-dlp`.
+- **Transcription**: Audio recognition with `faster-whisper`.
+- **Speaker Diarization**: Identifies and separates different speakers using `pyannote.audio`.
+- **Audio Separation**: Isolates vocals from background music or SFX using `demucs`.
+- **Neural Translation**: Text translation using the `demonbyron/HY-MT1.5-7B` model via Ollama.
+- **Voice Synthesis (TTS)**: Multi-language voice generation with `kokoro`.
+- **Interactive Editor**: Web interface to edit translations, change voices, and regenerate audio by segment.
+- **Video Assembly**: Audio mixing and hybrid synchronization (audio/video) using FFmpeg.
+
+## Technologies
 
 - **Backend**: Python 3.12, FastAPI, Uvicorn
-- **LLM Local**: Ollama
-- **Audio y Machine Learning**: `faster-whisper`, `pyannote.audio`, `kokoro`, `demucs`, `torch`, `soundfile`
-- **Procesamiento de Video**: FFmpeg
+- **Local LLM**: Ollama
+- **Audio & Machine Learning**: `faster-whisper`, `pyannote.audio`, `kokoro`, `demucs`, `torch`, `soundfile`
+- **Video Processing**: FFmpeg
 - **Frontend**: HTML5, Vanilla JavaScript, CSS3
 
-## Instalación
+## Hardware Requirements & Performance
 
-⚠️ **Importante**: Es necesario tener instalada la versión completa de `ffmpeg` (con soporte para `libx264`), tener `ollama` instalado y el modelo de traducción en ejecución.
+The application is highly optimized to run locally without requiring enterprise-grade hardware. As a reference, the following specifications yield excellent results in reasonable timeframes for both transcription (English/Chinese) and voice generation:
+
+- **CPU**: Intel Core i5 (11th Gen) or equivalent
+- **RAM**: 32 GB 
+- **GPU (VRAM)**: 4 GB
+
+*Node:* The system features dynamic fallback mechanisms. If the GPU runs out of memory (VRAM), the app automatically flushes the cache and falls back to CPU/RAM processing. This means that even with 4GB VRAM, you can smoothly process long videos in technically complex languages using advanced models (like `large-v3`) without encountering fatal crash errors.
+
+## Installation
+
+⚠️ **Important**: You must have the full version of `ffmpeg` installed (with `libx264` support), `ollama` installed, and your chosen translation model running.
 
 ```bash
 git clone https://github.com/YourUsername/traductor_IA.git
 cd traductor_IA
 
-# Crear y activar un entorno virtual
+# Create and activate a virtual environment
 python3 -m venv venv
 source venv/bin/activate
 
-# Instalar las dependencias
+# Install dependencies
 pip install -r requirements.txt
 ```
 
-### Dependencias del Sistema (FFmpeg)
-**Fedora** (Requiere habilitar RPM Fusion):
+### System Dependencies (FFmpeg)
+**Fedora** (Requires enabling RPM Fusion):
 ```bash
 sudo dnf install --nogpgcheck https://mirrors.rpmfusion.org/free/fedora/rpmfusion-free-release-$(rpm -E %fedora).noarch.rpm https://mirrors.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-$(rpm -E %fedora).noarch.rpm
 sudo dnf swap ffmpeg-free ffmpeg --allowerasing
@@ -49,28 +61,32 @@ sudo dnf swap ffmpeg-free ffmpeg --allowerasing
 sudo apt-get install ffmpeg
 ```
 
-## Uso
+## Usage
 
-Para iniciar la aplicación, ejecuta el script de arranque incluido:
+To start the application, run the included startup script:
 ```bash
 chmod +x start.sh
 ./start.sh
 ```
 
-O levanta el servidor manualmente:
+Or start the server manually:
 ```bash
 uvicorn app:app --reload
 ```
-Una vez iniciado, abre tu navegador y dirígete a `http://localhost:8000`.
+Once started, open your browser and navigate to `http://localhost:8000`.
 
-## Contribuciones
+## Advanced Configuration
 
-Las contribuciones son bienvenidas. Puedes abrir un *Issue* para reportar errores o errores de sincronización, o enviar un *Pull Request* si deseas proponer mejoras al código.
+For instructions on how to modify internal models (like Whisper `large-v3`), adjust transcription parameters, or tweak the translation prompts, please read the [Advanced Usage Guide](ADVANCED_USAGE.md).
 
-## Licencia
+## Contributions
 
-Este proyecto está bajo la licencia **GNU Affero General Public License v3.0 (AGPLv3)**. Consulta el archivo `LICENSE` para más detalles.
+Contributions are welcome! Feel free to open an *Issue* to report bugs or synchronization issues, or submit a *Pull Request* to propose code improvements.
 
-## Descargo de Responsabilidad
+## License
 
-Este proyecto tiene fines estrictamente educativos. El autor no se hace responsable por el mal uso de la información, el código provisto, o las voces generadas. Úselo bajo su propio riesgo.
+This project is licensed under the **GNU Affero General Public License v3.0 (AGPLv3)**. See the `LICENSE` file for more details.
+
+## Disclaimer
+
+This project is strictly for educational purposes. The author is not responsible for the misuse of the information, provided code, or generated voices. Use at your own risk.
