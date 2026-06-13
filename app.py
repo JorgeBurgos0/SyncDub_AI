@@ -8,6 +8,7 @@ import shutil
 import json
 import subprocess
 import uuid
+from pathlib import Path
 from typing import Optional
 from traductor import VideoTranslatorPipeline
 
@@ -30,14 +31,23 @@ project_status = {}
 def update_status(project_id, status: str):
     project_status[project_id] = status
 
+def build_project_filename(original_filename: str) -> str:
+    suffix = Path(original_filename).suffix.lower() or ".mp4"
+    return f"local_{uuid.uuid4().hex[:10]}{suffix}"
+
 @app.post("/api/upload")
-async def upload_video(background_tasks: BackgroundTasks, file: UploadFile = File(...), target_language: str = Form("es")):
-    file_path = f"uploads/{file.filename}"
+async def upload_video(
+    background_tasks: BackgroundTasks,
+    file: UploadFile = File(...),
+    target_language: str = Form("es"),
+    source_language: Optional[str] = Form(None),
+):
+    project_id = build_project_filename(file.filename)
+    file_path = os.path.join("uploads", project_id)
     with open(file_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
     
-    project_id = file.filename
-    pipe = VideoTranslatorPipeline(file_path, target_language=target_language)
+    pipe = VideoTranslatorPipeline(file_path, target_language=target_language, source_language=source_language)
     pipelines[project_id] = pipe
     
     update_status(project_id, "extracting_audio")

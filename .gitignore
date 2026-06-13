@@ -53,9 +53,11 @@ tmp/
 .DS_Store
 Thumbs.db
 
-# Exclusivo del Proyecto Traductor IA
+# SyncDub AI generated files
 uploads/
+separated/
 kokoro-v0_19/
 *.mp4
+!assets/demo.mp4
 *.wav
 *.json

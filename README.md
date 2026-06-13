@@ -1,8 +1,18 @@
-# 🎙️ SyncDub AI (AI Video Dubbing)
+# SyncDub AI
 
-![Doblador IA Dashboard](Captura.png)
+![SyncDub AI Dashboard](assets/dashboard.png)
 
-An application that automates the video translation and dubbing process. It uses an asynchronous FastAPI backend and a web dashboard to transcribe, translate, generate voiceovers, and assemble the final video while preserving the original background music.
+AI-powered video translation and dubbing workflow built with Python, FastAPI, local AI models, and FFmpeg.
+
+SyncDub AI turns a local video or YouTube URL into an editable dubbing project. It transcribes speech, detects speakers, translates each segment, generates synthetic voiceovers, and assembles the final dubbed video while preserving the original background music.
+
+> Portfolio note: this is a local-first prototype focused on AI automation, audio/video processing, and backend workflow orchestration.
+
+## Demo
+
+- Dashboard screenshot: `assets/dashboard.png`
+- Demo video: [assets/demo.mp4](assets/demo.mp4)
+- Case study: [docs/case-study.md](docs/case-study.md)
 
 ## Features
 
@@ -23,6 +33,26 @@ An application that automates the video translation and dubbing process. It uses
 - **Video Processing**: FFmpeg
 - **Frontend**: HTML5, Vanilla JavaScript, CSS3
 
+## Architecture
+
+```txt
+Video / YouTube URL
+        |
+        v
+FastAPI backend
+        |
+        +--> FFmpeg audio extraction
+        +--> Demucs vocal/background separation
+        +--> faster-whisper transcription
+        +--> pyannote speaker diarization
+        +--> Ollama translation
+        +--> Kokoro TTS generation
+        +--> FFmpeg final video assembly
+        |
+        v
+Web dashboard editor
+```
+
 ## Hardware Requirements & Performance
 
 The application is highly optimized to run locally without requiring enterprise-grade hardware. As a reference, the following specifications yield excellent results in reasonable timeframes for both transcription (English/Chinese) and voice generation:
@@ -31,15 +61,15 @@ The application is highly optimized to run locally without requiring enterprise-
 - **RAM**: 32 GB 
 - **GPU (VRAM)**: 4 GB
 
-*Node:* The system features dynamic fallback mechanisms. If the GPU runs out of memory (VRAM), the app automatically flushes the cache and falls back to CPU/RAM processing. This means that even with 4GB VRAM, you can smoothly process long videos in technically complex languages using advanced models (like `large-v3`) without encountering fatal crash errors.
+*Note:* The system features dynamic fallback mechanisms. If the GPU runs out of memory (VRAM), the app automatically flushes the cache and falls back to CPU/RAM processing. This means that even with 4GB VRAM, you can smoothly process long videos in technically complex languages using advanced models (like `large-v3`) without encountering fatal crash errors.
 
 ## Installation
 
 ⚠️ **Important**: You must have the full version of `ffmpeg` installed (with `libx264` support), `ollama` installed, and your chosen translation model running.
 
 ```bash
-git clone https://github.com/YourUsername/traductor_IA.git
-cd traductor_IA
+git clone https://github.com/JorgeBurgos0/SyncDub_AI.git
+cd SyncDub_AI
 
 # Create and activate a virtual environment
 python3 -m venv venv
@@ -74,6 +104,15 @@ Or start the server manually:
 uvicorn app:app --reload
 ```
 Once started, open your browser and navigate to `http://localhost:8000`.
+
+## Portfolio Positioning
+
+This project demonstrates:
+
+- AI workflow automation with multiple local models.
+- Backend orchestration for long-running media processing tasks.
+- Audio/video processing with FFmpeg and Demucs.
+- Human-in-the-loop editing for translations, speakers, voices, and regenerated audio.
 
 ## Advanced Configuration
 
